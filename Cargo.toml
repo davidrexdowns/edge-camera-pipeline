@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+  "wasm-modules/camera-processor",
+  "hosts/pi4-c922",
+]
+
