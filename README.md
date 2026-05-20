@@ -1,16 +1,11 @@
 # edge-camera-pipeline
 
-Hybrid RTSP + MQTT + Wasm camera pipeline for Humanoid edge devices.
+Hybrid **RTSP + MQTT + Wasm** camera pipeline for Humanoid edge devices.
 
-## Architecture
-- Raspberry Pi 4 (edge-2, edge-3) → Logitech C922
-  - RTSP video stream
-  - WasmEdge metadata processor (timestamping, events)
-  - MQTT publishing
-- Jetson Orin Nano → DeepStream consumption
+### Architecture
+- **edge-2 / edge-3** (Pi 4 + Logitech C922)
+  - RTSP video stream (high quality)
+  - WasmEdge metadata processor (precise timestamping + events)
+  - MQTT publishing of metadata
+- **david-jetson** → DeepStream consumes RTSP + MQTT metadata
 
-## Folders
-- `wasm-modules/`     → Reusable Wasm binaries
-- `hosts/pi4-c922/`   → Host binary for Pi 4 + C922
-- `deployment/`       → Systemd services, scripts
-- `docs/`            → Architecture & setup guides
