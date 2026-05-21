@@ -3,7 +3,10 @@
 #
 # Usage:
 #   ./deployment/scripts/deploy.sh pi@100.103.x.x
-#   ./deployment/scripts/deploy.sh pi@edge-pi4 --target aarch64-unknown-linux-gnu
+#   ./deployment/scripts/deploy.sh root@192.168.3.77 aarch64-unknown-linux-gnu
+#
+# Tip: set up SSH keys to avoid repeated password prompts:
+#   ssh-copy-id pi@192.168.3.77
 #
 set -euo pipefail
 
@@ -11,9 +14,21 @@ REMOTE_HOST="${1:-}"
 BUILD_TARGET="${2:-}"
 
 if [[ -z "${REMOTE_HOST}" ]]; then
-  echo "Usage: $0 <user@netbird-ip> [cargo-target-triple]"
-  echo "Example: $0 pi@100.103.99.20 aarch64-unknown-linux-gnu"
+  echo "Usage: $0 <user@host> [cargo-target-triple]"
+  echo "Example: $0 pi@192.168.3.77 aarch64-unknown-linux-gnu"
   exit 1
+fi
+
+# When SSH user is root, skip sudo (avoids password prompts / failures on DietPi).
+if [[ "${REMOTE_HOST}" == *"@"* ]]; then
+  REMOTE_USER="${REMOTE_HOST%%@*}"
+else
+  REMOTE_USER=""
+fi
+if [[ "${REMOTE_USER}" == "root" ]]; then
+  SUDO=""
+else
+  SUDO="sudo"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,26 +54,25 @@ if [[ ! -f "${BIN_PATH}" ]]; then
   exit 1
 fi
 
-echo "==> Preparing remote directories"
-ssh "${REMOTE_HOST}" "sudo mkdir -p ${INSTALL_DIR}/bin ${CONFIG_DIR}"
+echo "==> Preparing remote directories (${REMOTE_HOST})"
+ssh "${REMOTE_HOST}" "${SUDO} mkdir -p ${INSTALL_DIR}/bin ${CONFIG_DIR}"
 
 echo "==> Copying binary"
 scp "${BIN_PATH}" "${REMOTE_HOST}:/tmp/${BINARY_NAME}"
-ssh "${REMOTE_HOST}" "sudo mv /tmp/${BINARY_NAME} ${INSTALL_DIR}/bin/${BINARY_NAME} && sudo chmod +x ${INSTALL_DIR}/bin/${BINARY_NAME}"
+ssh "${REMOTE_HOST}" "${SUDO} mv /tmp/${BINARY_NAME} ${INSTALL_DIR}/bin/${BINARY_NAME} && ${SUDO} chmod +x ${INSTALL_DIR}/bin/${BINARY_NAME}"
 
-echo "==> Installing config (only if missing)"
-ssh "${REMOTE_HOST}" "test -f ${CONFIG_DIR}/config.toml || sudo cp -n ${INSTALL_DIR}/config.example.toml ${CONFIG_DIR}/config.toml 2>/dev/null || true"
+echo "==> Installing config template"
 scp "${REPO_ROOT}/config.example.toml" "${REMOTE_HOST}:/tmp/config.example.toml"
-ssh "${REMOTE_HOST}" "sudo cp /tmp/config.example.toml ${INSTALL_DIR}/config.example.toml"
-ssh "${REMOTE_HOST}" "if [[ ! -f ${CONFIG_DIR}/config.toml ]]; then sudo cp ${INSTALL_DIR}/config.example.toml ${CONFIG_DIR}/config.toml; echo 'Created ${CONFIG_DIR}/config.toml — EDIT BEFORE STARTING'; fi"
+ssh "${REMOTE_HOST}" "${SUDO} cp /tmp/config.example.toml ${INSTALL_DIR}/config.example.toml"
+ssh "${REMOTE_HOST}" "if [[ ! -f ${CONFIG_DIR}/config.toml ]]; then ${SUDO} cp ${INSTALL_DIR}/config.example.toml ${CONFIG_DIR}/config.toml; echo 'Created ${CONFIG_DIR}/config.toml — EDIT BEFORE STARTING'; fi"
 
 echo "==> Installing systemd unit"
 scp "${REPO_ROOT}/deployment/systemd/pi-camera-host.service" "${REMOTE_HOST}:/tmp/pi-camera-host.service"
-ssh "${REMOTE_HOST}" "sudo mv /tmp/pi-camera-host.service /etc/systemd/system/edge-camera-host.service && sudo systemctl daemon-reload"
+ssh "${REMOTE_HOST}" "${SUDO} mv /tmp/pi-camera-host.service /etc/systemd/system/edge-camera-host.service && ${SUDO} systemctl daemon-reload"
 
 echo "==> Enable and restart service"
-ssh "${REMOTE_HOST}" "sudo systemctl enable edge-camera-host.service && sudo systemctl restart edge-camera-host.service || true"
+ssh "${REMOTE_HOST}" "${SUDO} systemctl enable edge-camera-host.service && ${SUDO} systemctl restart edge-camera-host.service || true"
 
 echo "Done. On device:"
-echo "  sudo nano ${CONFIG_DIR}/config.toml"
-echo "  sudo journalctl -u edge-camera-host.service -f"
+echo "  ${SUDO:+sudo }nano ${CONFIG_DIR}/config.toml"
+echo "  ${SUDO:+sudo }journalctl -u edge-camera-host.service -f"

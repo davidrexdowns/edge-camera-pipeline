@@ -1,4 +1,43 @@
-/target/
-**/*.swp
-.DS_Store
+# --- Rust / Cargo ---
+**/target/
+**/*.rs.bk
+*.pdb
+
+# --- Per-device config (never commit real IPs/credentials) ---
 config.toml
+**/config.toml
+*.local.toml
+.env
+.env.*
+
+# --- Build outputs / binaries (deploy via scp, not git) ---
+*.wasm
+/dist/
+/build/
+
+# --- Logs & runtime ---
+*.log
+/logs/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+*~
+
+# --- Editors / IDE ---
+.idea/
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# --- SSH / keys (just in case) ---
+*.pem
+id_rsa*
+*.key
+
+# --- DietPi / field deploy scratch ---
+*.deb
+.deploy/

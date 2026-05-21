@@ -1,1 +1,0 @@
-{"rustc":5391851738765093524,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[2639670782783410618,"build_script_build",false,10484743603815062871]],"local":[{"RerunIfChanged":{"output":"debug/build/fiber-for-wasmedge-96443084d751d494/output","paths":["build.rs"]}}],"rustflags":[],"config":0,"compile_kind":0}
