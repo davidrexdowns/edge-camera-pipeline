@@ -1,113 +1,150 @@
 # edge-camera-pipeline
 
-Simple, reliable, field-deployable edge camera pipeline:
+Reliable **DietPi** edge camera nodes for a NetBird mesh: Pi 4 and Pi Zero 2 W run a single Rust binary that waits for MQTT commands, then publishes **RTSP** (GStreamer → MediaMTX) and **timestamped metadata**.
 
-- **NetBird**: secure overlay network (assumed already enrolled on devices)
-- **Jetson**: central controller (Mosquitto broker + DeepStream/Cosmos consumers)
-- **Pi worker**: Rust host daemon that:
-  - auto-starts on boot (systemd)
-  - registers to Jetson via MQTT
-  - listens for `start/stop/status` commands
-  - when started: launches an RTSP stream + publishes timestamped metadata (≈200ms)
-- **Wasm module**: reusable logic for metadata shaping (WASI)
+## Architecture
+
+```text
+Phone / Jetson controller
+        │  MQTT (start / stop / status)
+        ▼
+┌─────────────────────────────┐
+│  DietPi Pi (dumb node)      │
+│  pi_camera_host             │
+│    ├─ subscribe cmd         │
+│    ├─ gst → MediaMTX :8554  │
+│    └─ metadata ~200ms       │
+└─────────────────────────────┘
+        │  RTSP over NetBird
+        ▼
+Jetson (DeepStream / Cosmos consumers)
+```
 
 ## Repo layout
 
 ```text
 edge-camera-pipeline/
-├── wasm-modules/camera-processor/     # Reusable Wasm logic (WASI)
-├── hosts/pi4-c922/                    # Rust host daemon for Pi 4 + Logitech C922
+├── Cargo.toml                 # workspace
+├── config.example.toml        # per-device template
+├── hosts/pi-camera-host/      # main binary (modular Rust)
 ├── deployment/
-│   ├── systemd/                       # Service files
-│   └── scripts/                       # deploy / update scripts
-├── config/                            # Example config + topic conventions
+│   ├── systemd/pi-camera-host.service
+│   └── scripts/deploy.sh
 └── README.md
 ```
 
-## MQTT topic conventions
+## Prerequisites (each Pi)
 
-Default topic prefix is `edge-camera`.
-
-For a device id like `pi4-c922-01`:
-
-- Commands: `edge-camera/pi4-c922-01/cmd`
-- Status: `edge-camera/pi4-c922-01/status`
-- Metadata: `edge-camera/pi4-c922-01/metadata`
-- Register: `edge-camera/pi4-c922-01/register`
-
-Command payloads (JSON):
-
-```json
-{"type":"start"}
-```
-
-```json
-{"type":"stop"}
-```
-
-```json
-{"type":"status"}
-```
-
-## Build
-
-### Pi host (native)
+On **DietPi**:
 
 ```bash
-cd hosts/pi4-c922
-cargo build --release
+sudo apt update
+sudo apt install -y gstreamer1.0-tools gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+# MediaMTX (RTSP server) — install binary or package for your image
+# Example: download from https://github.com/bluenviron/mediamtx/releases
 ```
 
-### Wasm module (WASI)
+- **NetBird** enrolled; note the Pi’s overlay IP for `rtsp.advertise_host`
+- **MQTT broker** on Jetson (`jetson_netbird_ip` in config)
+- Camera on `/dev/video0` (or change `rtsp.video_device`)
 
-Requires Rust target `wasm32-wasip1` (preferred) or `wasm32-wasi` depending on your toolchain.
+## Build (WSL or native)
 
 ```bash
-cd wasm-modules/camera-processor
-rustup target add wasm32-wasip1 || true
-cargo build --release --target wasm32-wasip1
-ls -la ../../target/wasm32-wasip1/release/camera_processor.wasm
+cd edge-camera-pipeline
+cargo build --release -p pi-camera-host
+# Binary: target/release/pi_camera_host
 ```
 
-## Run on Pi (manual)
-
-1) Install dependencies:
-
-- Mosquitto is on Jetson (broker)
-- On Pi: `wasmedge` must be installed (for now we embed via WasmEdge SDK; CLI optional)
-- GStreamer is used for RTSP pipeline
-
-2) Put config at:
-
-`/etc/edge-camera-pipeline/pi4-c922.toml` (see `config/pi4-c922.example.toml`)
-
-3) Run:
+### Cross-compile for ARM64 (Pi 4 / Pi Zero 2 W)
 
 ```bash
-sudo ./target/release/pi4_c922_host --config /etc/edge-camera-pipeline/pi4-c922.toml
+rustup target add aarch64-unknown-linux-gnu
+sudo apt install -y gcc-aarch64-linux-gnu
+cargo build --release -p pi-camera-host --target aarch64-unknown-linux-gnu
+# Binary: target/aarch64-unknown-linux-gnu/release/pi_camera_host
+```
+
+The Rust binary is statically linked where possible (`lto`, `strip`). **GStreamer** remains a runtime dependency on the Pi.
+
+## Configuration
+
+Copy and edit on each device:
+
+```bash
+sudo mkdir -p /etc/edge-camera-pipeline
+sudo cp config.example.toml /etc/edge-camera-pipeline/config.toml
+sudo nano /etc/edge-camera-pipeline/config.toml
+```
+
+| Field | Purpose |
+|--------|---------|
+| `device.id` | Unique MQTT device id |
+| `device.device_type` | `pi4` or `pi_zero_2w` (resolution presets) |
+| `mqtt.jetson_netbird_ip` | Jetson NetBird IP (broker) |
+| `rtsp.advertise_host` | **This Pi’s** NetBird IP for the public RTSP URL |
+| `rtsp.path` | MediaMTX path (e.g. `pi4-c922-01`) |
+
+### Device presets
+
+| Type | Default resolution | FPS | Bitrate |
+|------|-------------------|-----|---------|
+| `pi4` | 1280×720 | 30 | 1500 kbps |
+| `pi_zero_2w` | 640×480 | 15 | 800 kbps |
+
+Override with `rtsp.width`, `rtsp.height`, `rtsp.fps`, `rtsp.bitrate_kbps`.
+
+## MQTT topics
+
+Prefix default: `edge-camera`
+
+| Topic | Direction | Payload |
+|-------|-----------|---------|
+| `edge-camera/<id>/cmd` | Subscribe | `{"type":"start"}` / `stop` / `status` |
+| `edge-camera/<id>/status` | Publish (retain) | streaming state + URL |
+| `edge-camera/<id>/metadata` | Publish | timestamped JSON ~200ms while live |
+| `edge-camera/<id>/register` | Publish (retain) | capabilities on connect |
+
+### Test from Jetson
+
+```bash
+mosquitto_pub -h 127.0.0.1 -t edge-camera/pi4-c922-01/cmd -m '{"type":"start"}'
+mosquitto_sub -h 127.0.0.1 -t 'edge-camera/pi4-c922-01/#'
+```
+
+## Deploy
+
+```bash
+chmod +x deployment/scripts/deploy.sh
+./deployment/scripts/deploy.sh pi@100.103.x.x aarch64-unknown-linux-gnu
+```
+
+Manual install:
+
+```bash
+sudo install -m 755 target/aarch64-unknown-linux-gnu/release/pi_camera_host \
+  /opt/edge-camera-pipeline/bin/pi_camera_host
+sudo cp deployment/systemd/pi-camera-host.service /etc/systemd/system/edge-camera-host.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now edge-camera-host.service
+sudo journalctl -u edge-camera-host.service -f
 ```
 
 ## systemd
 
-See:
+Service name: `edge-camera-host.service`  
+Expects config at `/etc/edge-camera-pipeline/config.toml`.
 
-- `deployment/systemd/pi4-c922.service`
-- `deployment/scripts/install_pi_service.sh`
+MediaMTX should listen on `127.0.0.1:8554` before the host starts streaming. Add a `mediamtx.service` unit or start MediaMTX in your image.
 
-## Notes / assumptions
+## Development guidelines
 
-- RTSP streaming assumes an RTSP server is running on the Pi (recommended: **mediamtx** / rtsp-simple-server). The Pi host spawns `gst-launch-1.0` to *publish* to `rtsp://127.0.0.1:8554/<path>`.
-- Metadata is published every ~200ms, independent of video frames.
-- This repo intentionally keeps the control plane simple (MQTT) and avoids Docker on Pis.
+- Prefer simplicity and reliability over clever abstractions
+- `anyhow` for errors; `tracing` with UTC timestamps for logs
+- One config file per device; no secrets in git
+- Wasm metadata optional in a future release
 
-# edge-camera-pipeline
+## License
 
-Hybrid **RTSP + MQTT + Wasm** camera pipeline for Humanoid edge devices.
-
-### Architecture
-- **edge-2 / edge-3** (Pi 4 + Logitech C922)
-  - RTSP video stream (high quality)
-  - WasmEdge metadata processor (precise timestamping + events)
-  - MQTT publishing of metadata
-- **david-jetson** → DeepStream consumes RTSP + MQTT metadata
-
+Private / project use — adjust as needed for `davidrexdowns/edge-camera-pipeline`.

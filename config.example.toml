@@ -1,0 +1,33 @@
+# Copy to /etc/edge-camera-pipeline/config.toml on each DietPi node.
+# Change device.id and rtsp.advertise_host per Pi.
+
+[device]
+id = "pi4-c922-01"
+# pi4 | pi_zero_2w  (selects default resolution/fps/bitrate)
+device_type = "pi4"
+
+[mqtt]
+# Jetson NetBird IP (MQTT broker runs here)
+jetson_netbird_ip = "100.103.12.104"
+port = 1883
+username = ""
+password = ""
+topic_prefix = "edge-camera"
+qos = 1
+keep_alive_seconds = 30
+
+[rtsp]
+enabled = true
+# This Pi's NetBird IP or DNS — clients use this in the stream URL
+advertise_host = "100.103.0.0"
+listen_port = 8554
+path = "pi4-c922-01"
+video_device = "/dev/video0"
+# Optional overrides (omit to use device_type presets)
+# width = 1280
+# height = 720
+# fps = 30
+# bitrate_kbps = 1500
+
+[metadata]
+tick_millis = 200

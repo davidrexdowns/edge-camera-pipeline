@@ -1,3 +1,0 @@
-device_id = "edge-2-c922"          # Change to edge-3-c922 on the other Pi
-jetson_netbird_ip = "100.103.86.154"   # ← CHANGE TO YOUR JETSON NETBIRD IP
-mqtt_port = 1883

@@ -1,0 +1,18 @@
+[Unit]
+Description=Edge camera node (MQTT + RTSP publisher)
+Documentation=https://github.com/davidrexdowns/edge-camera-pipeline
+After=network-online.target mediamtx.service
+Wants=network-online.target
+# MediaMTX should be installed separately; remove After= if not using systemd for it.
+
+[Service]
+Type=simple
+User=root
+Environment=RUST_LOG=info
+ExecStart=/opt/edge-camera-pipeline/bin/pi_camera_host --config /etc/edge-camera-pipeline/config.toml
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
-members = [
-  "wasm-modules/camera-processor",
-  "hosts/pi4-c922",
-]
+members = ["hosts/pi-camera-host"]
 
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

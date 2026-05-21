@@ -1,0 +1,21 @@
+[package]
+name = "pi-camera-host"
+version = "0.2.0"
+edition = "2021"
+description = "DietPi edge camera node — MQTT control, RTSP via GStreamer + MediaMTX"
+
+[[bin]]
+name = "pi_camera_host"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+rumqttc = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "process", "sync"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "time"] }
+time = { version = "0.3", features = ["formatting", "macros"] }
